@@ -1,36 +1,78 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Nomichi Trip Desk
 
-## Getting Started
+A lead management and trip CRM for the Nomichi team.
 
-First, run the development server:
+## Live App
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+[URL here] — Admin login: [email] / [password]
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What this is
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Nomichi Trip Desk is the internal tool behind Nomichi's curated travel experiences. The public site lets travellers browse open trips and submit enquiries; the admin desk gives the team a single place to manage leads, track pipeline status, log calls, and draft outreach with AI assistance.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Running locally
 
-## Learn More
+1. Clone the repo
+2. Copy `.env.example` to `.env.local` and fill in your Supabase and Groq keys
+3. Run `supabase/schema.sql` then `supabase/seed.sql` in your Supabase SQL editor
+4. `npm install && npm run dev`
 
-To learn more about Next.js, take a look at the following resources:
+Required environment variables:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `GROQ_API_KEY`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Schema decisions
 
-## Deploy on Vercel
+The database uses five tables plus Supabase Auth:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **profiles** — one row per team member, created automatically when someone signs up
+- **trips** — catalogue of journeys with seats, pricing, and open/closed status
+- **leads** — enquiries from the public form or future channels
+- **call_logs** — structured notes from phone conversations, separate from the audit trail
+- **activity_timeline** — append-only log of system events (status changes, assignments, notes)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`call_logs` and `activity_timeline` are split on purpose. Call logs hold the raw conversation record the team reads day to day. The timeline is a lightweight audit trail that auto-populates from mutations so you can see what changed and when without parsing note text.
+
+RLS is enabled on sensitive tables. Open trips are readable by anonymous users for the public page. Authenticated team members can read all leads and write call logs. Public enquiry submissions use the service role server-side so visitors never need an account. Admin mutations that must not fail silently (status updates, owner assignment) also use the service role after verifying the session.
+
+## AI features
+
+Three AI tools live on the lead detail page. All run server-side via `/api/ai/*` routes using Groq (Llama 3.3 70B) and never expose the API key to the browser.
+
+1. **Draft WhatsApp message** — generates a warm first message referencing the trip and vibe note
+2. **Summarise call log** — condenses all call notes into two plain-text sentences
+3. **Read the vibe** — suggests likely/maybe/unlikely fit based on enquiry answers, always framed as a suggestion
+
+Keeping AI on the server protects the API key, keeps prompts consistent, and allows auth checks before any model call.
+
+## Decisions made
+
+- **Service role for public lead inserts and admin status updates** — RLS is great for reads, but CRM writes need to be reliable. Using the service role after session verification avoids silent zero-row updates.
+- **Separate activity timeline from call logs** — notes are for humans; timeline entries are for accountability. Splitting them keeps the UI clear and the audit trail automatic.
+- **Server Components for lists, client components only where interaction is needed** — leads and trips fetch on the server for speed and SEO; filters, forms, and AI panels hydrate only where necessary.
+
+## What you would build next
+
+- WhatsApp webhook to auto-create leads when someone messages the Nomichi number
+- CSV export filtered by date range
+- Email notification to owner when a lead is assigned to them
+- Role-based access: associates see only their own leads (RLS fully enforced)
+- Reminders: flag leads with no activity in 48 hours
+
+## Deploy checklist
+
+Before submitting, verify:
+
+- [ ] `npm run build` exits with zero errors
+- [ ] All env vars added to Vercel dashboard
+- [ ] `supabase/schema.sql` and `seed.sql` run clean on production Supabase project
+- [ ] Live Vercel URL loads public page with trips visible
+- [ ] Admin login works on live URL
+- [ ] Enquiry form submits successfully on mobile (test on phone)
+- [ ] CSV export downloads correctly
+- [ ] All three AI features work on the live URL
+- [ ] No `.env` files committed to the repo
+- [ ] `.env.example` is committed and complete
